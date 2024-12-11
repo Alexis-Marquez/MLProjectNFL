@@ -1,65 +1,30 @@
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
+from src.functions import prepare_data
+
 play_by_play_data = pd.read_csv("C:/Users/qewfh/PycharmProjects/MLProjectNFL/src/play_by_play_2024-copy.csv")
 
-play_by_play_data = play_by_play_data.dropna(subset=['play_type'])
-
-play_by_play_data = play_by_play_data[play_by_play_data['play_type'] != 'no_play']
-play_by_play_data = play_by_play_data[play_by_play_data['play_type'] != 'kickoff']
-play_by_play_data = play_by_play_data[play_by_play_data['play_type'] != 'extra_point']
-
-encoders = {}
-
-categorical_columns = [
-    'game_half',
-    'series_result', 'fixed_drive_result', 'play_type'
-]
-
-for column in categorical_columns:
-    encoders[column] = LabelEncoder()
-    play_by_play_data[column] = encoders[column].fit_transform(play_by_play_data[column])
-
-play_by_play_data = play_by_play_data.fillna(0)
-
-
 features = [
-    'yardline_100','quarter_seconds_remaining','half_seconds_remaining','game_seconds_remaining', 'game_half','quarter_end','drive'
-    ,'qtr','down','goal_to_go','ydstogo','yards_gained','timeout','posteam_timeouts_remaining'
-    ,'defteam_timeouts_remaining','posteam_score','defteam_score','score_differential','no_score_prob','opp_fg_prob'
-    ,'opp_safety_prob','opp_td_prob','fg_prob','safety_prob','td_prob','series_success','series_result','fixed_drive_result','drive_play_count'
-    ,'drive_first_downs','drive_inside20','drive_ended_with_score','drive_quarter_start','drive_quarter_end','out_of_bounds'
-]
+        'yardline_100', 'quarter_seconds_remaining', 'half_seconds_remaining', 'game_seconds_remaining', 'game_half',
+        'quarter_end', 'drive'
+        , 'qtr', 'down', 'goal_to_go', 'ydstogo', 'yards_gained', 'timeout', 'posteam_timeouts_remaining'
+        , 'defteam_timeouts_remaining', 'posteam_score', 'defteam_score', 'score_differential', 'no_score_prob',
+        'opp_fg_prob'
+        , 'opp_safety_prob', 'opp_td_prob', 'fg_prob', 'safety_prob', 'td_prob', 'series_success', 'series_result',
+        'fixed_drive_result', 'drive_play_count'
+        , 'drive_first_downs', 'drive_inside20', 'drive_ended_with_score', 'drive_quarter_start', 'drive_quarter_end',
+        'out_of_bounds'
+    ]
 
+x, y, encoders = prepare_data(play_by_play_data, features)
 
-x = play_by_play_data[features]
-
-y = play_by_play_data['play_type']
-
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.5, random_state=42)
-
-# custom_plays = pd.read_csv('C:/Users/qewfh/PycharmProjects/MLProjectNFL/src/customPlays.csv')
-# label_encoder1 = LabelEncoder()
-# custom_plays['game_half'] = label_encoder1.fit_transform(custom_plays['game_half'])
-# custom_plays['pass_location'] = label_encoder1.fit_transform(custom_plays['pass_location'])
-# custom_plays['run_location'] = label_encoder1.fit_transform(custom_plays['run_location'])
-# custom_plays['run_gap'] = label_encoder1.fit_transform(custom_plays['run_gap'])
-# custom_plays['series_result'] = label_encoder1.fit_transform(custom_plays['series_result'])
-# custom_plays['play_type_nfl'] = label_encoder1.fit_transform(custom_plays['play_type_nfl'])
-# custom_plays['fixed_drive_result'] = label_encoder1.fit_transform(custom_plays['fixed_drive_result'])
-# custom_plays['drive_start_transition'] = label_encoder1.fit_transform(custom_plays['drive_start_transition'])
-# custom_plays['drive_end_transition'] = label_encoder1.fit_transform(custom_plays['drive_end_transition'])
-# custom_plays['play_type'] = label_encoder1.fit_transform(custom_plays['play_type'])
-
-# custom_plays = custom_plays.fillna(0)
-#
-# y_test = custom_plays['play_type']
-# x_test = custom_plays.drop(columns=['play_type'])
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=42)
 
 scaler = StandardScaler()
 x_train = scaler.fit_transform(x_train)
@@ -86,6 +51,9 @@ knn.fit(x_train, y_train)
 y_pred = knn.predict(x_test)
 print(knn.score(x_test, y_test))
 print("accuracy: ", accuracy_score(y_test, y_pred))
+
+print("classification report: \n", classification_report(y_test, y_pred))
+
 classes = encoders['play_type'].classes_
 print("Mapping of labels to encoded values: ")
 for index, label in enumerate(classes):
@@ -99,7 +67,7 @@ print(sample_df)
 
 example_situation = dict.fromkeys(features, 0)
 example_situation.update({
-    'yardline_100':20,
+    'yardline_100':10,
     'quarter_seconds_remaining':20,
     'half_seconds_remaining':470,
     'game_seconds_remaining':1370,
@@ -109,7 +77,7 @@ example_situation.update({
     'qtr': 1,
     'down': 4,
     'goal_to_go': 0,
-    'ydstogo': 10,
+    'ydstogo': 1,
     'posteam_timeouts_remaining': 2,
     'defteam_timeouts_remaining': 3,
     'posteam_score': 0,
@@ -146,9 +114,9 @@ def predict_play(model, situation):
         return []
 
 
-def print_pred(model, example_situation):
+def print_pred(model, situation):
     print("\nPredicting play for example situation...")
-    predictions = predict_play(model, example_situation)
+    predictions = predict_play(model, situation)
     if predictions:
         print("\nTop 3 likely plays:")
         for play_type, probability in predictions:

@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
-from sklearn.metrics import classification_report
+from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report
 
 from src.functions import prepare_data
 
@@ -21,19 +22,46 @@ features = [
         'out_of_bounds'
     ]
 
-X, y, encoders = prepare_data(play_by_play_data, features)
+x, y, encoders = prepare_data(play_by_play_data, features)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=42)
 
 scaler = StandardScaler()
-X_train = scaler.fit_transform(X_train)
-X_test = scaler.transform(X_test)
+x_train = scaler.fit_transform(x_train)
+x_test = scaler.transform(x_test)
 
-tree = DecisionTreeClassifier(min_samples_split=50, min_samples_leaf=10, random_state=45, class_weight='balanced')
-tree.fit(X_train, y_train)
-y_pred = tree.predict(X_test)
-accuracy = np.mean(y_test == y_pred)
-print(f"\nOverall Accuracy: {accuracy:.2%}")
+down_weight = 5
+yard_weight = 15
+goal_to_go_weight = 10
+point_differential_weight = 5
+x_train[:, features.index('down')] *= down_weight
+x_test[:, features.index('down')] *= down_weight
+x_train[:, features.index('yardline_100')] *= yard_weight
+x_test[:, features.index('yardline_100')] *= yard_weight
+
+x_train[:, features.index('ydstogo')] *= goal_to_go_weight
+x_test[:, features.index('ydstogo')] *= goal_to_go_weight
+
+x_test[:, features.index('score_differential')] *= point_differential_weight
+x_train[:, features.index('score_differential')] *= point_differential_weight
+
+logReg = LogisticRegression(max_iter=10000)
+
+logReg.fit(x_train, y_train)
+
+y_pred = logReg.predict(x_test)
+
+coefficients = logReg.coef_[0]
+
+importance = list(zip(features, np.abs(coefficients)))
+
+importance.sort(key=lambda x: x[1], reverse=True)
+
+for feature, coefficient in importance:
+    print(f"Feature: {feature}, Coefficient: {coefficient}")
+
+print(logReg.score(x_test, y_test))
+print("accuracy: ", accuracy_score(y_test, y_pred))
 
 print("classification report: \n", classification_report(y_test, y_pred))
 
@@ -41,14 +69,6 @@ classes = encoders['play_type'].classes_
 print("Mapping of labels to encoded values: ")
 for index, label in enumerate(classes):
     print(index, label)
-
-importance = tree.feature_importances_
-importance = list(zip(features, importance))
-
-importance = sorted(importance, key=lambda x: x[1], reverse=True)
-for feature, imp in importance:
-    print(f"Feature: {feature}, Importance: {imp}")
-
 print("\nSample Predictions (First 10):")
 sample_df = pd.DataFrame({
     'Actual': y_test.iloc[:10],
@@ -58,17 +78,17 @@ print(sample_df)
 
 example_situation = dict.fromkeys(features, 0)
 example_situation.update({
-    'yardline_100':60,
-    'quarter_seconds_remaining':50,
+    'yardline_100':10,
+    'quarter_seconds_remaining':20,
     'half_seconds_remaining':470,
     'game_seconds_remaining':1370,
     'game_half': 1,
     'quarter_end': 0,
     'drive': 5,
     'qtr': 1,
-    'down': 2,
+    'down': 4,
     'goal_to_go': 0,
-    'ydstogo': 6,
+    'ydstogo': 3,
     'posteam_timeouts_remaining': 2,
     'defteam_timeouts_remaining': 3,
     'posteam_score': 0,
@@ -76,13 +96,18 @@ example_situation.update({
     'score_differential': 0
 })
 
+
 def predict_play(model, situation):
-    """Predict the play type for a given situation"""
     try:
         # Create a DataFrame with one row using the same feature names as training
         situation_df = pd.DataFrame([situation], columns=features)
-        situation_scaled = scaler.transform(situation_df)
+
         # Get prediction and probabilities
+        situation_scaled = scaler.transform(situation_df)
+        situation_scaled[:, features.index('down')] *= down_weight
+        situation_scaled[:, features.index('yardline_100')] *= yard_weight
+        situation_scaled[:, features.index('ydstogo')] *= goal_to_go_weight
+        situation_scaled[:, features.index('score_differential')] *= point_differential_weight
         prediction = model.predict(situation_scaled)[0]
         probabilities = model.predict_proba(situation_scaled)[0]
 
@@ -99,12 +124,14 @@ def predict_play(model, situation):
         print(f"Error in prediction: {str(e)}")
         return []
 
-def print_pred(model, example_situation):
+
+def print_pred(model, situation):
     print("\nPredicting play for example situation...")
-    predictions = predict_play(model, example_situation)
+    predictions = predict_play(model, situation)
     if predictions:
         print("\nTop 3 likely plays:")
         for play_type, probability in predictions:
             print(f"{play_type}: {probability:.2%} confidence")
 
-print_pred(tree, example_situation)
+
+print_pred(logReg, example_situation)
